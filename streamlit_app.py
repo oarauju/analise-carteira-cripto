@@ -9,7 +9,7 @@ from pathlib import Path
 
 # Configuração inicial da página
 st.set_page_config(
-    page_title="Wallet Cripto",
+    page_title="Criptograma",
     page_icon="https://raw.githubusercontent.com/Daviaraujos/analise_investimento/main/logo.png",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -126,7 +126,7 @@ def calculate_max_drawdown(crypto_data):
     return daily_drawdown.min() * 100
 
 # Interface principal
-st.title("Wallet Cripto")
+st.title("Criptograma")
 st.markdown("**Análise, Cotação e Insights para sua Carteira de Criptomoedas**")
 
 # Inputs de data e seleção de criptomoedas na barra lateral
