@@ -2,150 +2,182 @@ import streamlit as st
 import pandas as pd
 import math
 from pathlib import Path
+import yfinance as yf
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+
+
+# Função para plotar o gráfico de pizza
+def plot_pie_chart(asset_allocation, selected_cryptos):
+    plt.figure(figsize=(6, 6))
+    plt.pie(asset_allocation, labels=selected_cryptos, autopct='%1.1f%%', startangle=90, colors=plt.cm.Paired.colors)
+    plt.title("Distribuição do Patrimônio em Criptoativos")
+    st.pyplot(plt)
+
+
 
 # Set the title and favicon that appear in the Browser's tab bar.
 st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
+    page_title='Wallet Cripto',
+    page_icon='https://raw.githubusercontent.com/Daviaraujos/analise_investimento/main/logo.png',  # Use seu logo ou emoji.
 )
 
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
+# Lista de criptomoedas disponíveis (com ticker do Yahoo Finance)
+cryptos = {
+    "Bitcoin": "BTC-USD",
+    "Ethereum": "ETH-USD",
+    "XRP": "XRP-USD",
+    "Cardano": "ADA-USD",
+    "Solana": "SOL-USD",
+    "Polkadot": "DOT-USD",
+    "Dogecoin": "DOGE-USD",
+    "Polygon": "MATIC-USD",
+    "Litecoin": "LTC-USD",
+    "Chainlink": "LINK-USD",
+    "Uniswap": "UNI-USD",
+    "Shiba Inu": "SHIB-USD",
+    "Avalanche": "AVAX-USD",
+    "Cosmos": "ATOM-USD",
+    "Algorand": "ALGO-USD",
+    "VeChain": "VET-USD",
+    "Tezos": "XTZ-USD",
+    "Filecoin": "FIL-USD",
+    "Stellar": "XLM-USD"
+}
+
+# -------------------------------------------------------------------------
+# Declare useful functions
 
 @st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
+def get_crypto_data(tickers, start_date, end_date):
+    """Fetch cryptocurrency data from Yahoo Finance."""
+    data = yf.download(tickers, start=start_date, end=end_date)['Close']
+    return data
 
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
-
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
-
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
-
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
-
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
-
-    return gdp_df
-
-gdp_df = get_gdp_data()
-
-# -----------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Draw the actual page
 
 # Set the title that appears at the top of the page.
 '''
-# :earth_americas: GDP dashboard
+# Wallet Cripto
 
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
+Análise, cotação e insights.
 '''
 
 # Add some spacing
 ''
 ''
 
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
+# Get the time range for the slider (the last 5 years)
+today = pd.to_datetime("today")
+start_date = today - pd.DateOffset(years=5)
 
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
+# Slider to choose date range
+from_date = st.date_input('Data inicial', start_date)
+to_date = st.date_input('Data final', today)
 
-countries = gdp_df['Country Code'].unique()
-
-if not len(countries):
-    st.warning("Select at least one country")
-
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
-
-''
-''
-''
-
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
-
-st.header('GDP over time', divider='gray')
-
-''
-
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
+# Select cryptocurrencies to analyze
+selected_cryptos = st.multiselect(
+    'Selecione as criptomoedas para exibir',
+    options=list(cryptos.keys()),
+    default=['Bitcoin', 'Ethereum', 'Solana']
 )
 
-''
-''
+# Check if at least one cryptocurrency is selected
+if not selected_cryptos:
+    st.warning("Por favor, selecione ao menos uma criptomoeda.")
 
+# Prepare tickers for Yahoo Finance API
+tickers = [cryptos[crypto] for crypto in selected_cryptos]
 
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
+# Fetch the data
+crypto_data = get_crypto_data(tickers, from_date, to_date)
 
-st.header(f'GDP in {to_year}', divider='gray')
+# Plot the data dynamically using Streamlit's line_chart
+st.header('Evolução das Cotações das Criptomoedas', divider='gray')
 
-''
+# Display the line chart (dynamic, like the original code)
+st.line_chart(crypto_data)
 
-cols = st.columns(4)
+# Display selected data for each cryptocurrency
+#st.header(f'Visão Geral dos Preços de {from_date} a {to_date}', divider='gray')
 
-for i, country in enumerate(selected_countries):
+cols = st.columns(len(selected_cryptos))
+
+for i, crypto in enumerate(selected_cryptos):
     col = cols[i % len(cols)]
-
+    
     with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-
-        if math.isnan(first_gdp):
+        first_price = crypto_data[cryptos[crypto]].iloc[0]
+        last_price = crypto_data[cryptos[crypto]].iloc[-1]
+        
+        if math.isnan(first_price):
             growth = 'n/a'
             delta_color = 'off'
         else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
+            growth = f'{last_price / first_price:,.2f}x'
             delta_color = 'normal'
 
         st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
+            label=f'{crypto} Preço',
+            value=f'R${last_price:,.2f}'.replace(",", "."),
             delta=growth,
             delta_color=delta_color
         )
+
+# Inputs para o cliente informar o investimento em cada moeda
+st.header("Insira seu Investimento em Criptomoedas")
+
+selected_cryptos = st.multiselect(
+    "Selecione as criptomoedas em que você investiu",
+    list(cryptos.keys()),
+    default=['Bitcoin', 'Ethereum', 'Dogecoin']  # Exemplo de valores iniciais
+)
+
+# Dicionário para armazenar o valor investido em cada moeda
+invested_values = {}
+
+# Solicita o valor investido em cada criptomoeda selecionada
+for crypto in selected_cryptos:
+    invested_values[crypto] = st.number_input(f"Quanto você investiu em {crypto.capitalize()} (R$):", min_value=0.0, format="%.2f")
+
+# Verifica se o total investido é maior que zero
+total_investido = sum(invested_values.values())
+if total_investido == 0:
+    st.warning("O valor total investido não pode ser zero. Por favor, insira valores válidos.")
+else:
+    # Calculando a alocação dos ativos (proporção de cada cripto na carteira)
+    asset_allocation = [invested_values[crypto] / total_investido for crypto in selected_cryptos]
+
+    # Exibindo o gráfico de pizza para mostrar a distribuição do patrimônio
+    plot_pie_chart(asset_allocation, selected_cryptos)
+
+    # Indicadores de rentabilidade
+    st.header("Indicadores de Rentabilidade e Performance")
+
+    # Calculando o retorno absoluto e ROI
+    return_absolute = total_investido - sum([invested_values[crypto] for crypto in selected_cryptos])
+    roi = (total_investido - sum([invested_values[crypto] for crypto in selected_cryptos])) / sum([invested_values[crypto] for crypto in selected_cryptos]) * 100 if total_investido > 0 else 0
+
+    st.metric("Retorno Absoluto", f"R${return_absolute:,.2f}")
+    st.metric("Retorno Percentual (ROI)", f"{roi:.2f}%")
+
+    # Risco e Volatilidade
+    st.header("Indicadores de Risco e Volatilidade")
+    # Exemplo de Desvio Padrão e Máxima Perda (Drawdown), podendo ser calculados com base nos dados históricos das criptos
+    st.metric("Desvio Padrão", "5.2%")  # Valor fictício, deve ser calculado com dados históricos
+    st.metric("Máxima Perda (Drawdown)", "-20.3%")  # Valor fictício, deve ser calculado
+
+    # Diversificação e Alocação
+    st.header("Diversificação e Alocação")
+    for crypto in selected_cryptos:
+        st.metric(f"Alocação de {crypto.capitalize()}", f"{(invested_values[crypto] / total_investido) * 100:.2f}%")
+
+    # Liquidez e Exposição
+    st.header("Liquidez e Exposição")
+    st.metric("Proporção de Stablecoins", "10%")  # Exemplo fixo, pode ser calculado
+    st.metric("Ativos com Maior Liquidez", "Bitcoin, Ethereum")  # Exemplo fixo
+
+    # Performance Ajustada ao Risco (exemplo de Sharpe Ratio)
+    st.header("Eficiência e Performance Ajustada ao Risco")
+    st.metric("Sharpe Ratio", "1.2")  # Exemplo fixo
