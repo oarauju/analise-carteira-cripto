@@ -92,6 +92,7 @@ tickers = [cryptos[crypto] for crypto in selected_cryptos]
 
 # Fetch the data
 crypto_data = get_crypto_data(tickers, from_date, to_date)
+st.write(crypto_data)  # Para depuração
 
 # Plot the data dynamically using Streamlit's line_chart
 st.header('Evolução das Cotações das Criptomoedas', divider='gray')
