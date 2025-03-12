@@ -1,8 +1,5 @@
-streamlit==1.43.2
-pandas==2.2.3
-yfinance==0.1.78
-matplotlib==3.7.1
-numpy==1.24.2 
+streamlit
+pandas
+numpy
+requests
 plotly
-datetime
-pathlib
