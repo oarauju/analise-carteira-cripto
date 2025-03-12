@@ -1,27 +1,71 @@
 import streamlit as st
 import pandas as pd
-import math
-from pathlib import Path
+import numpy as np
 import yfinance as yf
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
+import plotly.express as px
+import plotly.graph_objects as go
+from datetime import datetime
+from pathlib import Path
 
-
-# Função para plotar o gráfico de pizza
-def plot_pie_chart(asset_allocation, selected_cryptos):
-    plt.figure(figsize=(6, 6))
-    plt.pie(asset_allocation, labels=selected_cryptos, autopct='%1.1f%%', startangle=90, colors=plt.cm.Paired.colors)
-    plt.title("Distribuição do Patrimônio em Criptoativos")
-    st.pyplot(plt)
-
-
-# Set the title and favicon that appear in the Browser's tab bar.
+# Configuração inicial da página
 st.set_page_config(
-    page_title='Wallet Cripto',
-    page_icon='https://raw.githubusercontent.com/Daviaraujos/analise_investimento/main/logo.png',  # Use seu logo ou emoji.
+    page_title="Wallet Cripto",
+    page_icon="https://raw.githubusercontent.com/Daviaraujos/analise_investimento/main/logo.png",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# Lista de criptomoedas disponíveis (com ticker do Yahoo Finance)
+# Estilo CSS personalizado com paleta de cores claras (Apple + OpenAI)
+st.markdown("""
+    <style>
+    .main {
+        background-color: #F5F5F7;
+        color: #1D1D1F;
+    }
+    .stApp {
+        background-color: #F5F5F7;
+    }
+    h1, h2, h3, h4, h5, h6 {
+        color: #1D1D1F;
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    .stSelectbox, .stDateInput, .stNumberInput {
+        background-color: #FFFFFF;
+        color: #1D1D1F;
+        border-radius: 12px;
+        padding: 10px;
+        border: 1px solid #10A37F;
+    }
+    .stSelectbox > div > div, .stDateInput > div > div, .stNumberInput > div > div {
+        background-color: #FFFFFF !important;
+        color: #1D1D1F !important;
+    }
+    .stMetric {
+        background-color: #FFFFFF;
+        border-radius: 12px;
+        padding: 15px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        border: 1px solid #E8ECEF;
+    }
+    .stDataFrame {
+        background-color: #FFFFFF;
+        border-radius: 12px;
+        padding: 10px;
+        border: 1px solid #E8ECEF;
+    }
+    .stExpander {
+        background-color: #FFFFFF;
+        border-radius: 12px;
+        border: 1px solid #E8ECEF;
+    }
+    .stSidebar .stSelectbox, .stSidebar .stDateInput {
+        background-color: #FFFFFF;
+        border: 1px solid #10A37F;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# Lista de criptomoedas disponíveis (ticker do Yahoo Finance)
 cryptos = {
     "Bitcoin": "BTC-USD",
     "Ethereum": "ETH-USD",
@@ -44,142 +88,189 @@ cryptos = {
     "Stellar": "XLM-USD"
 }
 
-# -------------------------------------------------------------------------
-# Declare useful functions
-
+# Função para buscar dados históricos
 @st.cache_data
 def get_crypto_data(tickers, start_date, end_date):
-    """Fetch cryptocurrency data from Yahoo Finance."""
-    data = yf.download(tickers, start=start_date, end=end_date)['Close']
-    return data
+    """Busca dados históricos de criptomoedas via Yahoo Finance."""
+    try:
+        data = yf.download(tickers, start=start_date, end=end_date, auto_adjust=True)
+        if isinstance(data, pd.DataFrame) and not data.empty:
+            if len(tickers) > 1:
+                if 'Close' in data.columns.levels[0]:
+                    return data['Close']
+                else:
+                    return data
+            else:
+                return data['Close'].to_frame(name=tickers[0])
+        else:
+            st.warning(f"Nenhum dado retornado para os tickers {tickers} no período {start_date} a {end_date}.")
+            return pd.DataFrame()
+    except Exception as e:
+        st.error(f"Erro ao buscar dados: {str(e)}")
+        return pd.DataFrame()
 
-# -------------------------------------------------------------------------
-# Draw the actual page
+# Função para calcular o Sharpe Ratio
+def calculate_sharpe_ratio(crypto_data, risk_free_rate=0.02):
+    daily_returns = crypto_data.pct_change().dropna()
+    if daily_returns.empty:
+        return np.nan
+    mean_daily_return = daily_returns.mean()
+    std_daily_return = daily_returns.std()
+    sharpe_ratio = (mean_daily_return - risk_free_rate / 252) / std_daily_return
+    return sharpe_ratio * np.sqrt(252)
 
-# Set the title that appears at the top of the page.
-'''
-# Wallet Cripto
+# Função para calcular o Drawdown máximo
+def calculate_max_drawdown(crypto_data):
+    roll_max = crypto_data.cummax()
+    daily_drawdown = crypto_data / roll_max - 1.0
+    return daily_drawdown.min() * 100
 
-Análise, cotação e insights.
-'''
+# Interface principal
+st.title("Wallet Cripto")
+st.markdown("**Análise, Cotação e Insights para sua Carteira de Criptomoedas**")
 
-# Add some spacing
-''
+# Inputs de data e seleção de criptomoedas na barra lateral
+with st.sidebar:
+    st.header("Configurações")
+    today = pd.to_datetime("today").date()
+    start_date_default = (pd.to_datetime(today) - pd.DateOffset(years=5)).date()
+    
+    from_date = st.date_input("Data Inicial", start_date_default)
+    to_date = st.date_input("Data Final", today)
+    
+    selected_cryptos = st.multiselect(
+        "Selecione as Criptomoedas",
+        options=list(cryptos.keys()),
+        default=["Bitcoin", "Ethereum", "Solana"]
+    )
 
-# Get the time range for the slider (the last 5 years)
-today = pd.to_datetime("today")
-start_date = today - pd.DateOffset(years=5)
-
-# Slider to choose date range
-from_date = st.date_input('Data inicial', start_date)
-to_date = st.date_input('Data final', today)
-
-# Select cryptocurrencies to analyze
-selected_cryptos = st.multiselect(
-    'Selecione as criptomoedas para exibir',
-    options=list(cryptos.keys()),
-    default=['Bitcoin', 'Ethereum', 'Solana']
-)
-
-# Check if at least one cryptocurrency is selected
 if not selected_cryptos:
     st.warning("Por favor, selecione ao menos uma criptomoeda.")
-
-# Prepare tickers for Yahoo Finance API
-tickers = [cryptos[crypto] for crypto in selected_cryptos]
-
-# Fetch the data
-crypto_data = get_crypto_data(tickers, from_date, to_date)
-
-# Plot the data dynamically using Streamlit's line_chart
-st.header('Evolução das Cotações das Criptomoedas', divider='gray')
-
-# Display the line chart (dynamic, like the original code)
-st.line_chart(crypto_data)
-
-# Display selected data for each cryptocurrency
-cols = st.columns(len(selected_cryptos))
-
-for i, crypto in enumerate(selected_cryptos):
-    col = cols[i % len(cols)]
-    
-    with col:
-        # Verifica se há dados para a criptomoeda
-        if crypto_data[cryptos[crypto]].isnull().all():
-            first_price = None
-            last_price = None
-        else:
-            first_price = crypto_data[cryptos[crypto]].iloc[0]
-            last_price = crypto_data[cryptos[crypto]].iloc[-1]
-
-        # Calcula a rentabilidade
-        if first_price is None or math.isnan(first_price):
-            growth = 'n/a'
-            delta_color = 'off'
-        else:
-            growth = f'{last_price / first_price:,.2f}x' if last_price is not None else 'n/a'
-            delta_color = 'normal'
-
-        st.metric(
-            label=f'{crypto} Preço',
-            value=f'R${last_price:,.2f}'.replace(",", ".") if last_price is not None else 'N/D',
-            delta=growth,
-            delta_color=delta_color
-        )
-
-# Inputs para o cliente informar o investimento em cada moeda
-st.header("Insira seu Investimento em Criptomoedas")
-
-selected_cryptos = st.multiselect(
-    "Selecione as criptomoedas em que você investiu",
-    list(cryptos.keys()),
-    default=['Bitcoin', 'Ethereum', 'Dogecoin']  # Exemplo de valores iniciais
-)
-
-# Dicionário para armazenar o valor investido em cada moeda
-invested_values = {}
-
-# Solicita o valor investido em cada criptomoeda selecionada
-for crypto in selected_cryptos:
-    invested_values[crypto] = st.number_input(f"Quanto você investiu em {crypto.capitalize()} (R$):", min_value=0.0, format="%.2f")
-
-# Verifica se o total investido é maior que zero
-total_investido = sum(invested_values.values())
-if total_investido == 0:
-    st.warning("O valor total investido não pode ser zero. Por favor, insira valores válidos.")
 else:
-    # Calculando a alocação dos ativos (proporção de cada cripto na carteira)
-    asset_allocation = [invested_values[crypto] / total_investido for crypto in selected_cryptos]
+    tickers = [cryptos[crypto] for crypto in selected_cryptos]
+    crypto_data = get_crypto_data(tickers, from_date, to_date)
 
-    # Exibindo o gráfico de pizza para mostrar a distribuição do patrimônio
-    plot_pie_chart(asset_allocation, selected_cryptos)
+    if crypto_data.empty:
+        st.error("Nenhum dado disponível para o período selecionado.")
+    else:
+        # Dashboard principal
+        # Gráfico de evolução das cotações
+        st.header("Evolução das Cotações")
+        fig = go.Figure()
+        for ticker in crypto_data.columns:
+            fig.add_trace(go.Scatter(
+                x=crypto_data.index,
+                y=crypto_data[ticker],
+                name=ticker,
+                line=dict(width=2, color="#10A37F")  # Verde vibrante da OpenAI
+            ))
+        fig.update_layout(
+            template="plotly_white",
+            height=400,
+            margin=dict(l=20, r=20, t=40, b=20),
+            showlegend=True,
+            xaxis_title="Data",
+            yaxis_title="Preço (USD)",
+            plot_bgcolor="#FFFFFF",
+            paper_bgcolor="#F5F5F7",
+            font=dict(color="#1D1D1F")
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
-    # Indicadores de rentabilidade
-    st.header("Indicadores de Rentabilidade e Performance")
+        # Métricas por criptomoeda
+        st.header("Desempenho Individual")
+        cols = st.columns(min(len(selected_cryptos), 4))
+        for i, crypto in enumerate(selected_cryptos):
+            ticker = cryptos[crypto]
+            with cols[i % len(cols)]:
+                if ticker in crypto_data.columns:
+                    first_price = crypto_data[ticker].iloc[0]
+                    last_price = crypto_data[ticker].iloc[-1]
+                    growth = (last_price / first_price - 1) * 100 if not pd.isna(first_price) else 0
+                    growth_str = f"{growth:.2f}%"
+                    delta_color = "normal" if growth > 0 else "inverse" if growth < 0 else "off"
+                    st.metric(
+                        label=f"{crypto}",
+                        value=f"R${last_price:,.2f}".replace(",", "."),
+                        delta=growth_str,
+                        delta_color=delta_color
+                    )
 
-    # Calculando o retorno absoluto e ROI
-    return_absolute = total_investido - sum([invested_values[crypto] for crypto in selected_cryptos])
-    roi = (total_investido - sum([invested_values[crypto] for crypto in selected_cryptos])) / sum([invested_values[crypto] for crypto in selected_cryptos]) * 100 if total_investido > 0 else 0
+        # Inputs de investimento e alocação
+        st.header("Sua Carteira de Criptomoedas")
+        invested_values = {}
+        with st.expander("Inserir Investimentos"):
+            for crypto in selected_cryptos:
+                invested_values[crypto] = st.number_input(
+                    f"Investimento em {crypto} (R$)",
+                    min_value=0.0,
+                    value=0.0,
+                    step=10.0,
+                    format="%.2f"
+                )
 
-    st.metric("Retorno Absoluto", f"R${return_absolute:,.2f}")
-    st.metric("Retorno Percentual (ROI)", f"{roi:.2f}%")
+        total_investido = sum(invested_values.values())
+        if total_investido > 0:
+            # Cálculo do valor atual da carteira
+            current_values = {
+                crypto: invested_values[crypto] / crypto_data[cryptos[crypto]].iloc[0] * crypto_data[cryptos[crypto]].iloc[-1]
+                for crypto in selected_cryptos if invested_values[crypto] > 0
+            }
+            total_current = sum(current_values.values())
 
-    # Risco e Volatilidade
-    st.header("Indicadores de Risco e Volatilidade")
-    # Exemplo de Desvio Padrão e Máxima Perda (Drawdown), podendo ser calculados com base nos dados históricos das criptos
-    st.metric("Desvio Padrão", "5.2%")  # Valor fictício, deve ser calculado com dados históricos
-    st.metric("Máxima Perda (Drawdown)", "-20.3%")  # Valor fictício, deve ser calculado
+            # Gráfico de alocação (gráfico de pizza)
+            st.header("Distribuição do Patrimônio")
+            labels = [crypto for crypto in selected_cryptos if invested_values[crypto] > 0]
+            asset_allocation = [invested_values[crypto] / total_investido for crypto in selected_cryptos if invested_values[crypto] > 0]
+            fig_pie = px.pie(
+                names=labels,
+                values=asset_allocation,
+                title="Distribuição do Patrimônio em Criptoativos",
+                template="plotly_white",
+                height=400,
+                color_discrete_sequence=["#10A37F", "#34C759", "#007AFF", "#E8ECEF", "#F5F5F7"]  # Paleta clara
+            )
+            fig_pie.update_layout(
+                plot_bgcolor="#FFFFFF",
+                paper_bgcolor="#F5F5F7",
+                font=dict(color="#1D1D1F")
+            )
+            st.plotly_chart(fig_pie, use_container_width=True)
 
-    # Diversificação e Alocação
-    st.header("Diversificação e Alocação")
-    for crypto in selected_cryptos:
-        st.metric(f"Alocação de {crypto.capitalize()}", f"{(invested_values[crypto] / total_investido) * 100:.2f}%")
+            # Rentabilidade
+            st.header("Rentabilidade da Carteira")
+            roi = (total_current - total_investido) / total_investido * 100
+            delta_color = "normal" if roi > 0 else "inverse" if roi < 0 else "off"
+            st.metric("Valor Atual Total", f"R${total_current:,.2f}".replace(",", "."), f"{roi:.2f}%", delta_color=delta_color)
 
-    # Liquidez e Exposição
-    st.header("Liquidez e Exposição")
-    st.metric("Proporção de Stablecoins", "10%")  # Exemplo fixo, pode ser calculado
-    st.metric("Ativos com Maior Liquidez", "Bitcoin, Ethereum")  # Exemplo fixo
+            # Risco e volatilidade
+            st.header("Risco e Volatilidade")
+            cols = st.columns(2)
+            for i, crypto in enumerate(selected_cryptos):
+                if invested_values[crypto] > 0:
+                    ticker = cryptos[crypto]
+                    sharpe = calculate_sharpe_ratio(crypto_data[ticker])
+                    drawdown = calculate_max_drawdown(crypto_data[ticker])
+                    with cols[i % 2]:
+                        sharpe_color = "normal" if sharpe > 1 else "inverse" if sharpe < 0 else "off"
+                        drawdown_color = "inverse" if drawdown < -20 else "normal" if drawdown > -10 else "off"
+                        st.metric(f"Sharpe Ratio - {crypto}", f"{sharpe:.2f}" if not pd.isna(sharpe) else "n/a", delta_color=sharpe_color)
+                        st.metric(f"Max Drawdown - {crypto}", f"{drawdown:.2f}%", delta_color=drawdown_color)
 
-    # Performance Ajustada ao Risco (exemplo de Sharpe Ratio)
-    st.header("Eficiência e Performance Ajustada ao Risco")
-    st.metric("Sharpe Ratio", "1.2")  # Exemplo fixo
+            # Correlação entre ativos
+            st.header("Correlação entre Ativos")
+            correlation_matrix = crypto_data.corr()
+            fig_heatmap = px.imshow(
+                correlation_matrix,
+                text_auto=True,
+                color_continuous_scale=["#FF3B30", "#E8ECEF", "#34C759"],  # Vermelho, neutro, verde
+                title="Matriz de Correlação",
+                template="plotly_white",
+                height=400
+            )
+            fig_heatmap.update_layout(
+                plot_bgcolor="#FFFFFF",
+                paper_bgcolor="#F5F5F7",
+                font=dict(color="#1D1D1F")
+            )
+            st.plotly_chart(fig_heatmap, use_container_width=True)
