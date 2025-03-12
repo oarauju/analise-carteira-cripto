@@ -15,7 +15,6 @@ def plot_pie_chart(asset_allocation, selected_cryptos):
     st.pyplot(plt)
 
 
-
 # Set the title and favicon that appear in the Browser's tab bar.
 st.set_page_config(
     page_title='Wallet Cripto',
@@ -66,7 +65,6 @@ Análise, cotação e insights.
 
 # Add some spacing
 ''
-''
 
 # Get the time range for the slider (the last 5 years)
 today = pd.to_datetime("today")
@@ -92,7 +90,6 @@ tickers = [cryptos[crypto] for crypto in selected_cryptos]
 
 # Fetch the data
 crypto_data = get_crypto_data(tickers, from_date, to_date)
-st.write(crypto_data)  # Para depuração
 
 # Plot the data dynamically using Streamlit's line_chart
 st.header('Evolução das Cotações das Criptomoedas', divider='gray')
@@ -101,27 +98,31 @@ st.header('Evolução das Cotações das Criptomoedas', divider='gray')
 st.line_chart(crypto_data)
 
 # Display selected data for each cryptocurrency
-#st.header(f'Visão Geral dos Preços de {from_date} a {to_date}', divider='gray')
-
 cols = st.columns(len(selected_cryptos))
 
 for i, crypto in enumerate(selected_cryptos):
     col = cols[i % len(cols)]
     
     with col:
-        first_price = crypto_data[cryptos[crypto]].iloc[0]
-        last_price = crypto_data[cryptos[crypto]].iloc[-1]
-        
-        if math.isnan(first_price):
+        # Verifica se há dados para a criptomoeda
+        if crypto_data[cryptos[crypto]].isnull().all():
+            first_price = None
+            last_price = None
+        else:
+            first_price = crypto_data[cryptos[crypto]].iloc[0]
+            last_price = crypto_data[cryptos[crypto]].iloc[-1]
+
+        # Calcula a rentabilidade
+        if first_price is None or math.isnan(first_price):
             growth = 'n/a'
             delta_color = 'off'
         else:
-            growth = f'{last_price / first_price:,.2f}x'
+            growth = f'{last_price / first_price:,.2f}x' if last_price is not None else 'n/a'
             delta_color = 'normal'
 
         st.metric(
             label=f'{crypto} Preço',
-            value=f'R${last_price:,.2f}'.replace(",", "."),
+            value=f'R${last_price:,.2f}'.replace(",", ".") if last_price is not None else 'N/D',
             delta=growth,
             delta_color=delta_color
         )
